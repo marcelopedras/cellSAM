@@ -202,7 +202,13 @@ class CellSAM(nn.Module):
 
     @torch.no_grad()
     def predict(
-        self, images, boxes_per_heatmap=None, transform=True, x=None, device=None, fast=False
+        self,
+        images,
+        boxes_per_heatmap=None,
+        transform=True,
+        x=None,
+        device=None,
+        fast=False,
     ):
         assert self.mask_threshold > 0  # otherwise all pred. will be true-> no blobs
         if isinstance(images, np.ndarray):
@@ -217,32 +223,27 @@ class CellSAM(nn.Module):
             for img in images:
                 h, w = img.shape[-2:]
                 scaling = 1024 / max(h, w)
-                paddings.append(
-                    (1024 - int(h * scaling), 1024 - int(w * scaling))
-                )
+                paddings.append((1024 - int(h * scaling), 1024 - int(w * scaling)))
 
         # In principle, we can batch images, but I suspect it will cause problems
         # with simultaneously batching the bounding boxes, which is more useful for inference.
         assert x.size(0) == 1
-                
 
         # TODO: update to use existing features
         if boxes_per_heatmap is None:
             boxes_per_heatmap = self.generate_bounding_boxes(images, device=device)
         else:
-            boxes_per_heatmap = (
-                torch.from_numpy(np.array(boxes_per_heatmap) * 1024 / max(images[0].shape))
+            boxes_per_heatmap = torch.from_numpy(
+                np.array(boxes_per_heatmap) * 1024 / max(images[0].shape)
             )
-        
+
         # B, N, 4
         if not fast:
             boxes_per_heatmap = boxes_per_heatmap[0]
 
-
         low_masks = []
         low_masks_thresholded = []
         scores = []
-
 
         for input_bbox in boxes_per_heatmap:
             # if fast , passes N, 4
@@ -292,16 +293,14 @@ class CellSAM(nn.Module):
 
             assert res.shape[-2:] == images[0].shape[1:]
             low_masks.append(res)
-            low_res_masks_thresholded = low_res_masks_thresholded[ :,
-                : images[0].shape[1], : images[0].shape[2]
+            low_res_masks_thresholded = low_res_masks_thresholded[
+                :, : images[0].shape[1], : images[0].shape[2]
             ]
             low_masks_thresholded.append(low_res_masks_thresholded)
             scores.append(iou_predictions[:, 0].detach().cpu().numpy())
 
-
         if low_masks == []:
             return None, None, None, None
-        
 
         if fast:
             low_masks = low_masks[0]
@@ -313,10 +312,8 @@ class CellSAM(nn.Module):
             scores = np.stack(scores)
 
         low_masks, thresholded_masks, scores = map(
-            np.squeeze,
-            (low_masks, thresholded_masks, scores)
+            np.squeeze, (low_masks, thresholded_masks, scores)
         )
-        
 
         for mask_idx, msk in enumerate(thresholded_masks):
             thresholded_masks[mask_idx] = keep_largest_object(msk)
@@ -330,4 +327,5 @@ class CellSAM(nn.Module):
         # sum all masks, #TODO: double check if max is the right move here
         thresholded_masks_summed = np.max(thresholded_masks_summed, axis=0)
 
-        return thresholded_masks_summed, thresholded_masks, x, boxes_per_heatmap
+        # Marcelo Add scores
+        return thresholded_masks_summed, thresholded_masks, x, boxes_per_heatmap, scores

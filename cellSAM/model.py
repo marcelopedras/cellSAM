@@ -59,10 +59,7 @@ def get_model(model: nn.Module = None) -> nn.Module:
 
     # with open(config_path, "r") as config_file:
 
-    config = yaml.safe_load(
-        pkgutil.get_data(__name__, "modelconfig.yaml")
-    )
-
+    config = yaml.safe_load(pkgutil.get_data(__name__, "modelconfig.yaml"))
 
     if model is None:
         if not os.path.exists(cellsam_assets_dir):
@@ -129,12 +126,15 @@ def segment_cellular_image(
     if "cuda" in device:
         model, img = model.to(device), img.to(device)
 
-    preds = model.predict(img, x=None, boxes_per_heatmap=bounding_boxes, device=device, fast=fast)
+    preds = model.predict(
+        img, x=None, boxes_per_heatmap=bounding_boxes, device=device, fast=fast
+    )
     if preds is None:
         warn("No cells detected in the image.")
         return np.zeros(img.shape[1:], dtype=np.int32), None, None
 
-    segmentation_predictions, _, x, bounding_boxes = preds
+    # Marcelo - Add Scores
+    segmentation_predictions, _, x, bounding_boxes, scores = preds
 
     if postprocess:
         segmentation_predictions = postprocess_predictions(segmentation_predictions)
@@ -143,7 +143,8 @@ def segment_cellular_image(
     if remove_boundaries:
         mask = subtract_boundaries(mask)
 
-    return mask, x.cpu().numpy(), bounding_boxes
+    # Marcelo - Return scores
+    return mask, x.cpu().numpy(), bounding_boxes, scores
 
 
 def postprocess_predictions(mask: np.ndarray):
